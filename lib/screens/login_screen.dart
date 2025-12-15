@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import '../services/login_service.dart';
+import 'package:geolocator/geolocator.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -12,12 +13,105 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   final _usernameController = TextEditingController();
   final _passwordController = TextEditingController();
+  bool _obscurePassword = true;
   String _message = '';
   bool _isLoading = false;
+  bool _locationReady = false;
+  @override
+  void initState() {
+    super.initState();
+    _ensurePermissions();
+  }
+
+  Future<void> _ensurePermissions() async {
+    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    setState(() {
+      _locationReady = true;
+    });
+    if (!serviceEnabled) {
+      await showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) => AlertDialog(
+          title: const Text("Location Required"),
+          content: const Text(
+            "Your location must be turned on to use this app. Please enable GPS.",
+          ),
+          actions: [
+            TextButton(
+              onPressed: () async {
+                await Geolocator.openLocationSettings();
+                Navigator.pop(ctx);
+              },
+              child: const Text("Open Settings"),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+
+    LocationPermission permission = await Geolocator.checkPermission();
+
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied) {
+        await showDialog(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text("Permission Denied"),
+            content: const Text(
+              "Location permission is required for login. Please grant permission.",
+            ),
+            actions: [
+              TextButton(
+                onPressed: () async {
+                  Navigator.pop(ctx);
+                  await Geolocator.openAppSettings();
+                },
+                child: const Text("Open App Settings"),
+              ),
+            ],
+          ),
+        );
+        return;
+      }
+    }
+
+    if (permission == LocationPermission.deniedForever) {
+      await showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text("Permission Permanently Denied"),
+          content: const Text(
+            "Please enable location permission manually from app settings.",
+          ),
+          actions: [
+            TextButton(
+              onPressed: () async {
+                Navigator.pop(ctx);
+                await Geolocator.openAppSettings();
+              },
+              child: const Text("Open Settings"),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+
+    print("✅ Location permissions granted.");
+  }
 
   Future<void> attemptLogin() async {
     final username = _usernameController.text.trim();
     final password = _passwordController.text;
+    if (username.isEmpty || password.isEmpty) {
+      setState(() {
+        _message = "Please enter both username and password.";
+      });
+      return;
+    }
 
     setState(() {
       _message = '';
@@ -99,14 +193,27 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                     ),
                     const SizedBox(height: 20),
+
                     TextField(
                       controller: _passwordController,
-                      obscureText: true,
+                      obscureText: _obscurePassword,
                       decoration: InputDecoration(
                         labelText: "Password",
                         prefixIcon: const Icon(Icons.lock),
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(12),
+                        ),
+                        suffixIcon: IconButton(
+                          icon: Icon(
+                            _obscurePassword
+                                ? Icons.visibility
+                                : Icons.visibility_off,
+                          ),
+                          onPressed: () {
+                            setState(() {
+                              _obscurePassword = !_obscurePassword;
+                            });
+                          },
                         ),
                       ),
                     ),
@@ -125,7 +232,9 @@ class _LoginScreenState extends State<LoginScreen> {
                       width: double.infinity,
                       height: 50,
                       child: ElevatedButton(
-                        onPressed: _isLoading ? null : attemptLogin,
+                        onPressed: _isLoading || !_locationReady
+                            ? null
+                            : attemptLogin,
                         style: ElevatedButton.styleFrom(
                           backgroundColor: const Color.fromARGB(
                             255,

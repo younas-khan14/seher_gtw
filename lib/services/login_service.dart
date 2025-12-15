@@ -35,7 +35,7 @@ Future<void> storeCredentials(String username, String password) async {
 // Try login via server
 Future<bool> loginOnline(String username, String password) async {
   try {
-    final url = Uri.parse('http://172.16.0.199:8000/api/login');
+    final url = Uri.parse('https://gateway.seher.org.pk/api/login');
 
     final response = await http.post(
       url,
